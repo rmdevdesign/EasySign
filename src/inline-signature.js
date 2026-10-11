@@ -13,7 +13,7 @@ export function setupInlineSignatureImport({input,onConfirm,onError}){
       const scale=Math.min(1,1600/Math.max(image.naturalWidth,image.naturalHeight));
       const canvas=document.createElement('canvas');canvas.width=Math.max(1,Math.round(image.naturalWidth*scale));canvas.height=Math.max(1,Math.round(image.naturalHeight*scale));const ctx=canvas.getContext('2d',{willReadFrequently:true});ctx.drawImage(image,0,0,canvas.width,canvas.height);
       const original=ctx.getImageData(0,0,canvas.width,canvas.height);let transparent=false;for(let i=3;i<original.data.length;i+=4)if(original.data[i]<240){transparent=true;break;}
-      const signature={original,clean:!transparent,strength:50};
+      const signature={original,clean:!transparent,strength:65};
       let rendered;
       try{rendered=renderSignature(signature);}catch{signature.clean=false;rendered=renderSignature(signature);onError('Le nettoyage masquait les traits. L’image est conservée ; ajustez le nettoyage sur le document.');}
       onConfirm({...rendered,signature,replacementId});
