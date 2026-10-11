@@ -75,8 +75,8 @@ body.editing{overflow:hidden;background:#e6e9e2}
   .floating-tools .tool strong{font-size:11px}
   .floating-tools .tool-icon{font-size:20px;width:22px}
   .floating-tools #undo{padding:0 10px;font-size:11px;min-height:48px}
-  #properties.floating-properties{display:block!important;top:auto;left:10px;right:10px;bottom:calc(87px + env(safe-area-inset-bottom) + var(--keyboard-offset,0px));width:auto;max-height:min(44dvh,340px);border-radius:16px;padding:10px 14px 14px;overflow:auto;scroll-padding-bottom:15px}
-  .floating-properties[hidden]{display:none!important}
+  #properties.floating-properties{top:auto;left:10px;right:10px;bottom:calc(87px + env(safe-area-inset-bottom) + var(--keyboard-offset,0px));width:auto;max-height:min(44dvh,340px);border-radius:16px;padding:10px 14px 14px;overflow:auto;scroll-padding-bottom:15px}
+  #properties.floating-properties:not([hidden]){display:block}
   .floating-properties .properties-heading{padding-bottom:2px}
   .floating-properties .properties-heading .quiet{min-height:38px}
   .floating-properties label{margin:8px 0 0;font-size:11px}
@@ -88,4 +88,5 @@ body.editing{overflow:hidden;background:#e6e9e2}
 }
 @media(max-width:360px){.floating-tools .tool{padding:8px}.floating-tools #undo{padding:0 7px}.editing .icon-button{min-width:32px}.zoom-controls output{min-width:38px}}
 .floating-tools #edit-selected{padding:0 14px;min-height:48px;background:#244e40;color:white;border-radius:10px;white-space:nowrap;font-weight:600}
+#properties.floating-properties[hidden]{display:none!important;pointer-events:none}
 @media(max-width:600px){.floating-tools{flex-wrap:wrap;justify-content:center;width:max-content}.floating-tools #edit-selected{position:absolute;bottom:calc(100% + 10px);left:50%;transform:translateX(-50%);box-shadow:0 4px 15px #243e3530;min-height:44px;padding:0 20px}.floating-tools:has(#edit-selected:not([hidden]))~.floating-properties{bottom:calc(140px + env(safe-area-inset-bottom) + var(--keyboard-offset,0px))}}
