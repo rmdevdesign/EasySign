@@ -37,6 +37,10 @@ const propertyHeader=document.createElement('div');propertyHeader.className='pro
 $('finish-edit').onclick=()=>{editingId=null;document.activeElement.blur();discardEmptyText();updateSelection();};
 document.querySelector('aside').remove();
 document.querySelector('.fit-label').remove();
+const firstPageButton=document.createElement('button');firstPageButton.id='first-page';firstPageButton.className='icon-button';firstPageButton.textContent='«';firstPageButton.setAttribute('aria-label','Première page');firstPageButton.title='Première page';$('prev').before(firstPageButton);
+const lastPageButton=document.createElement('button');lastPageButton.id='last-page';lastPageButton.className='icon-button';lastPageButton.textContent='»';lastPageButton.setAttribute('aria-label','Dernière page');lastPageButton.title='Dernière page';$('next').after(lastPageButton);
+function goToPage(number){if(!pdf||number===pageNumber)return;pageNumber=number;selected=null;editingId=null;updateProperties();$('page-scroll').scrollTo(0,0);renderPage();}
+firstPageButton.onclick=()=>goToPage(1);lastPageButton.onclick=()=>goToPage(pdf.numPages);
 const zoomControls=document.createElement('div');zoomControls.className='zoom-controls';zoomControls.innerHTML='<button id="zoom-out" class="icon-button" aria-label="Réduire le zoom">−</button><output id="zoom-level" aria-live="polite">100 %</output><button id="zoom-in" class="icon-button" aria-label="Agrandir le PDF">+</button><button id="zoom-fit" class="quiet">Ajuster</button>';document.querySelector('.page-toolbar').append(zoomControls);
 const content=document.createElement('div');content.id='page-content';$('page-stage').before(content);content.append($('page-stage'));
 function fitWidth(){return Math.max(180,$('page-scroll').clientWidth-(window.innerWidth<600?16:48));}
@@ -54,6 +58,14 @@ function restoreAnchor(){if(!pendingAnchor)return;const scroll=$('page-scroll'),
 $('zoom-in').onclick=()=>setZoom(zoom+.25);$('zoom-out').onclick=()=>setZoom(zoom-.25);$('zoom-fit').onclick=()=>{setZoom(1);$('page-scroll').scrollTo({left:0,top:0});};
 $('page-scroll').addEventListener('wheel',(e)=>{if(!e.ctrlKey&&!e.metaKey)return;e.preventDefault();setZoom(zoom*Math.exp(-e.deltaY*.003),e.clientX,e.clientY);},{passive:false});
 let pinch=null;
+// Cancel native page zoom without stopping the PDF's own pinch handlers.
+for(const event of ['touchstart','touchmove'])document.addEventListener(event,(e)=>{
+  if(e.touches.length>1&&e.cancelable)e.preventDefault();
+},{capture:true,passive:false});
+// Safari also emits proprietary gesture events for native pinch zoom.
+for(const event of ['gesturestart','gesturechange','gestureend'])document.addEventListener(event,(e)=>{
+  if(e.cancelable)e.preventDefault();
+},{passive:false});
 function touchDistance(touches){return Math.hypot(touches[0].clientX-touches[1].clientX,touches[0].clientY-touches[1].clientY);}
 $('page-scroll').addEventListener('touchstart',(e)=>{if(e.touches.length!==2)return;pinch={distance:touchDistance(e.touches),zoom};e.preventDefault();},{passive:false});
 $('page-scroll').addEventListener('touchmove',(e)=>{if(!pinch||e.touches.length!==2)return;e.preventDefault();setZoom(pinch.zoom*touchDistance(e.touches)/pinch.distance,(e.touches[0].clientX+e.touches[1].clientX)/2,(e.touches[0].clientY+e.touches[1].clientY)/2,true);},{passive:false});
@@ -105,7 +117,7 @@ async function renderPage() {
     canvas.width = Math.round(vp.width*dpr); canvas.height = Math.round(vp.height*dpr);
     $('page-stage').style.width = `${vp.width}px`; $('page-stage').style.height = `${vp.height}px`;
     await page.render({canvasContext:canvas.getContext('2d'),viewport:vp,transform:[dpr,0,0,dpr,0,0]}).promise;
-    $('page-info').textContent = `Page ${pageNumber} / ${pdf.numPages}`; $('prev').disabled = pageNumber === 1; $('next').disabled = pageNumber === pdf.numPages; renderItems();
+    $('page-info').textContent = `Page ${pageNumber} / ${pdf.numPages}`; $('prev').disabled = firstPageButton.disabled = pageNumber === 1; $('next').disabled = lastPageButton.disabled = pageNumber === pdf.numPages; renderItems();
   } catch (err) { console.error(err); notify('L’affichage de cette page a échoué.'); }
   finally { rendering = false; if (rerender) { rerender = false; renderPage(); } }
 }
@@ -178,7 +190,7 @@ $('item-size').onpointerdown=checkpoint;
 $('item-size').oninput=(e)=>{const item=items.find(x=>x.id===selected);if(!item)return;if(item.type==='text'){item.size=Number(e.target.value)/2000;measureText(item);}else{const factor=Number(e.target.value)/100/item.w;const safe=Math.min(factor,(1-item.x)/item.w,(1-item.y)/item.h);item.w*=safe;item.h*=safe;}renderItems();};
 $('delete-item').onclick=removeSelected;
 $('overlays').onpointerdown=(e)=>{if(e.target===$('overlays')){selected=null;updateSelection();}};
-$('prev').onclick=()=>{if(pageNumber>1){pageNumber--;selected=null;updateProperties();renderPage();}};$('next').onclick=()=>{if(pageNumber<pdf.numPages){pageNumber++;selected=null;updateProperties();renderPage();}};
+$('prev').onclick=()=>{if(pageNumber>1)goToPage(pageNumber-1);};$('next').onclick=()=>{if(pageNumber<pdf.numPages)goToPage(pageNumber+1);};
 $('export').onclick=async()=>{const button=$('export');button.disabled=true;try{const result=await exportPdf(bytes,items,geometries);const blob=new Blob([result],{type:'application/pdf'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename.replace(/\.pdf$/i,'')+'-signe.pdf';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);notify('Votre PDF est prêt. Sur iPhone, utilisez Partager pour l’enregistrer dans Fichiers.');}catch(err){console.error(err);notify('Export impossible. Les textes doivent utiliser des caractères latins (sans emoji).');}finally{button.disabled=false;}};
 $('demo').onclick=async()=>{const doc=await PDFDocument.create();const font=await doc.embedFont(StandardFonts.Helvetica);const page=doc.addPage([595,842]);const ink=rgb(.12,.2,.18);page.drawText('AUTORISATION',{x:55,y:755,size:24,font,color:ink});page.drawText('Un exemple pour prendre la main',{x:55,y:724,size:12,font,color:ink});for(const [i,text]of ['Je soussigné(e) :','Autorise :','Fait à :                         Le :','Signature :'].entries()){const y=620-i*110;page.drawText(text,{x:55,y,size:13,font,color:ink});page.drawLine({start:{x:55,y:y-45},end:{x:540,y:y-45},thickness:.6,color:rgb(.7,.75,.72)});}await openDocument(await doc.save(),'Autorisation-demo.pdf');};
 let resizeTimer;window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(renderPage,150);});
