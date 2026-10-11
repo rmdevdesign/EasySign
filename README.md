@@ -18,6 +18,14 @@ npm run build
 
 Le dossier `dist/` peut être hébergé sur un hébergement statique HTTPS.
 
+## GitHub Pages
+
+Le chemin Vite est configuré pour `https://rmdevdesign.github.io/EasySign/`.
+Dans le dépôt GitHub, choisir **Settings → Pages → Source → GitHub Actions**.
+Le workflow `.github/workflows/deploy.yml` teste, compile et publie `dist/` à chaque push sur `main`.
+La racine du dépôt contient les sources de développement et ne doit pas être servie directement par Pages.
+Le serveur local est accessible à `http://localhost:5173/EasySign/`.
+
 ## Utilisation
 
 1. Choisir un PDF ou ouvrir la démonstration.
