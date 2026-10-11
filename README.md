@@ -39,6 +39,8 @@ La police du texte est intégrée au PDF. Les textes utilisent les caractères l
 
 Le nettoyage des signatures est un traitement local des pixels clairs, adapté à l’encre sombre ou colorée sur papier blanc ou clair. Il ne reconnaît pas sémantiquement une signature et ne sépare pas les autres textes présents dans une photo. Les ombres fortes et les fonds complexes peuvent nécessiter un recadrage préalable. Les images sont réduites à 1600 pixels sur leur plus grand côté pour limiter la mémoire sur mobile, puis converties en PNG transparent pour l’export PDF.
 
+Sur une signature sélectionnée, **Recadrer** affiche huit poignées : quatre bords et quatre coins. Ajuster le cadre puis **Appliquer**, ou **Annuler**. Le recadrage s’effectue dans les pixels originaux et est conservé lors du réglage du nettoyage. **Annuler** dans la barre principale restaure aussi un recadrage appliqué. **Fond tenace** active le nettoyage maximal ; il peut supprimer les traits très pâles, donc vérifier l’aperçu sur le PDF.
+
 L’interface est responsive et utilise Pointer Events pour les gestes tactiles. Une validation sur appareils iOS réels reste nécessaire.
 
 Le PDF utilise la largeur disponible. Le zoom de 50 à 300 % se règle avec +/− ou le pincement à deux doigts sur le document. Sur ordinateur, Ctrl/Cmd + molette zoome autour du pointeur. « Ajuster » revient à la largeur de l’écran. Le zoom ne modifie pas les coordonnées exportées. À fort zoom, faire défiler le document pour se déplacer.

@@ -30,3 +30,9 @@ test('Stronger cleanup removes gray residue while preserving solid black strokes
   const gentle=removePaper(pixels,3,1,10),strong=removePaper(pixels,3,1,100);
   assert.ok(gentle[7]>0);assert.equal(strong[7],0);assert.equal(strong[11],255);
 });
+
+test('Maximum cleanup removes dark gray residue while retaining dark signature ink',()=>{
+  const pixels=new Uint8ClampedArray([255,255,255,255,145,145,145,255,0,0,0,255]);
+  assert.ok(removePaper(pixels,3,1,65)[7]>0);
+  const output=removePaper(pixels,3,1,100);assert.equal(output[7],0);assert.equal(output[11],255);
+});

@@ -26,7 +26,9 @@ export function removePaper(pixels, width, height, strength = 50) {
     const valid=samples>0&&(r*.2126+g*.7152+b*.0722)/samples>=paperLight*.6;
     field[offset]=valid?r/samples:paper[0];field[offset+1]=valid?g/samples:paper[1];field[offset+2]=valid?b/samples:paper[2];
   }
-  const threshold = 6 + Math.max(0,Math.min(100,strength))*.65;
+  const level=Math.max(0,Math.min(100,strength));
+  // The upper end deliberately rejects much darker residue than the default.
+  const threshold = 6 + level*.65 + Math.max(0,level-65)*1.5;
   for(let y=0;y<height;y++)for(let x=0;x<width;x++){
     const i=(y*width+x)*4;if(!pixels[i+3])continue;
     const fx=Math.max(0,Math.min(columns-1,(x+.5)/tile-.5)),fy=Math.max(0,Math.min(rows-1,(y+.5)/tile-.5));

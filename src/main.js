@@ -5,6 +5,7 @@ import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { exportPdf } from './pdf.js';
 import { zoomAroundPoint, centerElementInView } from './viewport.js';
 import { setupInlineSignatureImport, renderSignature } from './inline-signature.js';
+import { adjustCrop, cropPixels } from './crop.js';
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
 const icons = { upload:'↑', signature:'〰', text:'T', download:'↓', close:'×' };
@@ -25,6 +26,7 @@ undoButton.onclick=()=>{if(!history.length)return;items=JSON.parse(history.pop()
 let bytes, pdf, pageNumber = 1, items = [], selected = null, geometries = {}, filename = '', rendering = false, rerender = false;
 let signatureData = null, signatureRatio = 3;
 let editingId = null;
+let cropSession=null;
 let zoom = 1, pendingAnchor = null;
 const dock=document.createElement('nav');dock.className='floating-tools';dock.setAttribute('aria-label','Outils du document');
 undoButton.textContent='↶ Annuler';
@@ -35,7 +37,32 @@ const selectionTools=document.createElement('div');selectionTools.className='sel
 const deleteButton=document.createElement('button');deleteButton.className='quiet';deleteButton.textContent='Supprimer';deleteButton.onclick=()=>removeSelected();selectionTools.append(deleteButton);
 const signatureTools=document.createElement('div');signatureTools.className='inline-signature-tools';signatureTools.hidden=true;signatureTools.innerHTML='<label><input id="clean-signature" type="checkbox"> Retirer le fond</label><label>Nettoyage <input id="clean-strength" type="range" min="0" max="100" value="50"></label>';$('editor').append(signatureTools);
 const signatureSources=new Map();
-function focusInlineText(){const el=$('overlays').querySelector('.text-content[contenteditable="true"]');if(!el)return;el.focus({preventScroll:true});const range=document.createRange();range.selectNodeContents(el);range.collapse(false);const sel=window.getSelection();sel.removeAllRanges();sel.addRange(range);scheduleElementCenter();}
+const cropButton=document.createElement('button');cropButton.className='quiet';cropButton.textContent='⌗ Recadrer';signatureTools.append(cropButton);
+const strongButton=document.createElement('button');strongButton.className='quiet';strongButton.textContent='Fond tenace';strongButton.title='Appliquer le nettoyage maximal';signatureTools.append(strongButton);
+strongButton.onclick=()=>{$('clean-signature').checked=true;$('clean-strength').value=100;$('clean-strength').dispatchEvent(new Event('change'));};
+const cropControls=document.createElement('div');cropControls.className='crop-controls';cropControls.hidden=true;cropControls.innerHTML='<span>Tirez les bords ou les coins</span><div><button class="quiet" id="crop-cancel">Annuler</button><button class="primary" id="crop-apply">Appliquer ✓</button></div>';$('editor').append(cropControls);
+cropButton.onclick=()=>{const item=items.find(item=>item.id===selected);const source=item&&signatureSources.get(item.data);if(!source)return;cropSession={id:item.id,source,base:{...item},bounds:renderSignature(source).bounds,crop:{left:0,top:0,right:1,bottom:1}};editingId=selected;const displayedWidth=item.w*$('page-stage').clientWidth;if(displayedWidth<240)setZoom(Math.min(3,zoom*240/displayedWidth));renderItems();updateProperties();};
+function cancelCrop(){cropSession=null;editingId=null;renderItems();updateProperties();}
+$('crop-cancel').onclick=cancelCrop;
+function commitCrop(){if(!cropSession)return true;const session=cropSession,item=items.find(item=>item.id===session.id);if(!item){cancelCrop();return false;}try{
+  const next={...session.source,crop:cropPixels(session.bounds,session.crop)},result=renderSignature(next);checkpoint();signatureSources.set(result.data,next);const c=session.crop,b=session.base;item.x=b.x+c.left*b.w;item.y=b.y+c.top*b.h;item.w=b.w*(c.right-c.left);item.h=b.h*(c.bottom-c.top);item.data=result.data;signatureData=result.data;signatureRatio=result.ratio;cropSession=null;editingId=null;renderItems();updateProperties();return true;
+}catch{notify('Le cadre ne contient plus de signature. Agrandissez le recadrage.');return false;}}
+$('crop-apply').onclick=commitCrop;
+function attachCropHandles(el){
+  const session=cropSession;el.classList.add('cropping');
+  const shade=document.createElement('div');shade.className='crop-shade';const mask=document.createElement('div');mask.className='crop-mask';shade.append(mask);el.append(shade);
+  const frame=document.createElement('div');frame.className='crop-frame';el.append(frame);
+  const repaint=()=>{const c=session.crop;for(const node of [frame,mask])Object.assign(node.style,{left:`${c.left*100}%`,top:`${c.top*100}%`,width:`${(c.right-c.left)*100}%`,height:`${(c.bottom-c.top)*100}%`});};repaint();
+  const labels={n:'Bord supérieur',s:'Bord inférieur',w:'Bord gauche',e:'Bord droit',nw:'Coin supérieur gauche',ne:'Coin supérieur droit',sw:'Coin inférieur gauche',se:'Coin inférieur droit'};
+  for(const direction of Object.keys(labels)){const handle=document.createElement('button');handle.className=`crop-handle crop-${direction}`;handle.setAttribute('aria-label',labels[direction]);frame.append(handle);
+    handle.onpointerdown=(e)=>{e.preventDefault();e.stopPropagation();handle.setPointerCapture(e.pointerId);const rect=el.getBoundingClientRect(),initial={...session.crop},sx=e.clientX,sy=e.clientY;
+      handle.onpointermove=(event)=>{session.crop=adjustCrop(initial,direction,(event.clientX-sx)/rect.width,(event.clientY-sy)/rect.height);repaint();};
+      handle.onpointerup=handle.onpointercancel=()=>{handle.onpointermove=null;};
+    };
+    handle.onkeydown=(e)=>{if(!e.key.startsWith('Arrow'))return;e.preventDefault();e.stopPropagation();const step=e.shiftKey?.03:.005;session.crop=adjustCrop(session.crop,direction,e.key==='ArrowRight'?step:e.key==='ArrowLeft'?-step:0,e.key==='ArrowDown'?step:e.key==='ArrowUp'?-step:0);repaint();};
+  }
+}
+function focusInlineText(){const el=$('overlays').querySelector('.text-content[contenteditable="plaintext-only"]');if(!el)return;el.focus({preventScroll:true});const range=document.createRange();range.selectNodeContents(el);range.collapse(false);const sel=window.getSelection();sel.removeAllRanges();sel.addRange(range);scheduleElementCenter();}
 document.querySelector('aside').remove();
 document.querySelector('.fit-label').remove();
 const firstPageButton=document.createElement('button');firstPageButton.id='first-page';firstPageButton.className='icon-button';firstPageButton.textContent='«';firstPageButton.setAttribute('aria-label','Première page');firstPageButton.title='Première page';$('prev').before(firstPageButton);
@@ -131,6 +158,7 @@ async function renderPage() {
   finally { rendering = false; if (rerender) { rerender = false; renderPage(); } }
 }
 function renderItems() {
+  if(cropSession&&!items.some(item=>item.id===cropSession.id&&item.page===pageNumber))cropSession=null;
   scheduleElementCenter();
   $('overlays').replaceChildren();
   const width = $('page-stage').clientWidth;
@@ -145,6 +173,7 @@ function renderItems() {
     }
     else { const img = document.createElement('img'); img.src = item.data; img.draggable = false; img.alt = 'Signature'; el.append(img); }
     const handle = document.createElement('button'); handle.className = 'resize-handle'; handle.setAttribute('aria-label','Redimensionner'); el.append(handle);
+    if(cropSession?.id===item.id)attachCropHandles(el);
     el.tabIndex = 0; el.setAttribute('aria-label',item.type === 'text' ? `Texte : ${item.text}` : 'Signature');
     el.onfocus = () => { if (selected !== item.id) { selected = item.id; updateSelection(); } };
     el.onpointerdown = (event) => startDrag(event,item,el,event.target === handle);
@@ -159,8 +188,9 @@ function discardEmptyText(keepSelected = false) {
   if(!items.some(item=>item.id===selected))selected=null;
   if(items.length!==count)renderItems();
 }
-function updateProperties() { discardEmptyText(true);const item=items.find(item=>item.id===selected);selectionTools.hidden=!item;editButton.hidden=!item;signatureTools.hidden=!item||item.type!=='signature';if(!item){editingId=null;}else{editButton.textContent=item.type==='text'?'✎ Écrire':'Changer l’image';const source=signatureSources.get(item.data);if(item.type==='signature'){signatureTools.hidden=!source;if(source){$('clean-signature').checked=source.clean;$('clean-strength').value=source.strength;$('clean-strength').disabled=!source.clean;}}}for(const el of $('overlays').children){const text=el.querySelector('.text-content');if(text)text.contentEditable=el.dataset.id===editingId?'plaintext-only':'false';}scheduleElementCenter(); }
+function updateProperties() { discardEmptyText(true);const item=items.find(item=>item.id===selected);selectionTools.hidden=!item;editButton.hidden=!item;signatureTools.hidden=!item||item.type!=='signature';if(!item){editingId=null;}else{editButton.textContent=item.type==='text'?'✎ Écrire':'Changer l’image';const source=signatureSources.get(item.data);if(item.type==='signature'){signatureTools.hidden=!source;if(source){$('clean-signature').checked=source.clean;$('clean-strength').value=source.strength;$('clean-strength').disabled=!source.clean;}}}cropControls.hidden=!cropSession;if(cropSession){selectionTools.hidden=true;signatureTools.hidden=true;}for(const el of $('overlays').children){const text=el.querySelector('.text-content');if(text)text.contentEditable=el.dataset.id===editingId?'plaintext-only':'false';}scheduleElementCenter(); }
 function startDrag(e,item,el,resize) {
+  if(cropSession)return;
   if(!resize&&e.target.closest('[contenteditable="plaintext-only"]'))return;
   if (e.button !== 0 || pinch) return; e.preventDefault(); checkpoint();editingId=null;document.activeElement.blur();selected=item.id; updateSelection(); el.setPointerCapture(e.pointerId);
   const rect=$('page-stage').getBoundingClientRect(), sx=e.clientX,sy=e.clientY, initial={...item};
@@ -192,6 +222,7 @@ const signatureImporter=setupInlineSignatureImport({input:$('signature-input'),o
 }});
 for(const id of ['clean-signature','clean-strength'])$(id).onchange=()=>{const item=items.find(item=>item.id===selected);const source=item&&signatureSources.get(item.data);if(!source)return;const next={...source,clean:$('clean-signature').checked,strength:Number($('clean-strength').value)};try{const result=renderSignature(next);checkpoint();signatureSources.set(result.data,next);item.data=result.data;const g=geometries[item.page];item.h=Math.min(1-item.y,item.w*g.width/g.height/result.ratio);item.w=item.h*g.height/g.width*result.ratio;signatureData=result.data;signatureRatio=result.ratio;renderItems();updateProperties();}catch{notify('Aucun trait visible. Diminuez le nettoyage.');updateProperties();}};
 document.addEventListener('pointerdown',(e)=>{
+  if(cropSession&&!e.target.closest('.crop-controls')&&!e.target.closest('.crop-handle')&&!e.target.closest('.cropping'))cancelCrop();
   if(e.target.closest('.selection-tools')||e.target.closest('.inline-signature-tools')||e.target.closest('[contenteditable="plaintext-only"]'))return;
   editingId=null;
   const placed=e.target.closest('.placed');

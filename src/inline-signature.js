@@ -23,10 +23,14 @@ export function setupInlineSignatureImport({input,onConfirm,onError}){
   return{open(id=null){replacementId=id;input.click();}};
 }
 
-export function renderSignature({original,clean,strength}){
-  const {width,height}=original;const pixels=clean?removePaper(original.data,width,height,strength):original.data.slice();
-  const bounds=inkBounds(pixels,width,height);if(!bounds)throw Error('Aucun trait visible');
+export function renderSignature({original,clean,strength,crop}){
+  const region=crop||{left:0,top:0,width:original.width,height:original.height};
+  const {width,height}=region;let input=original.data;
+  if(crop){input=new Uint8ClampedArray(width*height*4);for(let y=0;y<height;y++){const start=((region.top+y)*original.width+region.left)*4;input.set(original.data.subarray(start,start+width*4),y*width*4);}}
+  const pixels=clean?removePaper(input,width,height,strength):input.slice();
+  const ink=inkBounds(pixels,width,height);if(!ink)throw Error('Aucun trait visible');
+  const bounds=crop?{left:0,top:0,width,height}:ink;
   const full=document.createElement('canvas');full.width=width;full.height=height;full.getContext('2d').putImageData(new ImageData(pixels,width,height),0,0);
   const cropped=document.createElement('canvas');cropped.width=bounds.width;cropped.height=bounds.height;cropped.getContext('2d').drawImage(full,bounds.left,bounds.top,bounds.width,bounds.height,0,0,bounds.width,bounds.height);
-  return{data:cropped.toDataURL('image/png'),ratio:bounds.width/bounds.height};
+  return{data:cropped.toDataURL('image/png'),ratio:bounds.width/bounds.height,bounds:{left:region.left+bounds.left,top:region.top+bounds.top,width:bounds.width,height:bounds.height}};
 }
