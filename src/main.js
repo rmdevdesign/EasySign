@@ -3,7 +3,7 @@ import * as pdfjs from 'pdfjs-dist';
 import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { exportPdf } from './pdf.js';
-import { zoomAroundPoint } from './viewport.js';
+import { zoomAroundPoint, centerElementInView } from './viewport.js';
 pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
 const icons = { upload:'↑', signature:'〰', text:'T', download:'↓', close:'×' };
@@ -31,7 +31,7 @@ const dock=document.createElement('nav');dock.className='floating-tools';dock.se
 undoButton.textContent='↶ Annuler';
 dock.append($('add-text'),$('add-signature'),undoButton);$('editor').append(dock);
 const editButton=document.createElement('button');editButton.id='edit-selected';editButton.className='quiet';editButton.textContent='✎ Modifier';editButton.hidden=true;dock.append(editButton);
-editButton.onclick=()=>{if(!selected)return;editingId=selected;updateProperties();const item=items.find(item=>item.id===selected);if(item?.type==='text')$('text-value').focus();};
+editButton.onclick=()=>{if(!selected)return;editingId=selected;updateProperties();const item=items.find(item=>item.id===selected);if(item?.type==='text')$('text-value').focus({preventScroll:true});};
 $('properties').classList.add('floating-properties');$('editor').append($('properties'));
 const propertyHeader=document.createElement('div');propertyHeader.className='properties-heading';propertyHeader.innerHTML='<strong id="property-title">Modifier le texte</strong><button id="finish-edit" class="quiet">Terminé ✓</button>';$('properties').prepend(propertyHeader);
 $('finish-edit').onclick=()=>{editingId=null;document.activeElement.blur();discardEmptyText();updateSelection();};
@@ -58,7 +58,26 @@ function touchDistance(touches){return Math.hypot(touches[0].clientX-touches[1].
 $('page-scroll').addEventListener('touchstart',(e)=>{if(e.touches.length!==2)return;pinch={distance:touchDistance(e.touches),zoom};e.preventDefault();},{passive:false});
 $('page-scroll').addEventListener('touchmove',(e)=>{if(!pinch||e.touches.length!==2)return;e.preventDefault();setZoom(pinch.zoom*touchDistance(e.touches)/pinch.distance,(e.touches[0].clientX+e.touches[1].clientX)/2,(e.touches[0].clientY+e.touches[1].clientY)/2,true);},{passive:false});
 for(const event of ['touchend','touchcancel'])$('page-scroll').addEventListener(event,(e)=>{if(pinch&&e.touches.length<2){pinch=null;renderPage();}});
-if(window.visualViewport){const adjustViewport=()=>{const v=window.visualViewport;document.documentElement.style.setProperty('--keyboard-offset',`${Math.max(0,window.innerHeight-v.height-v.offsetTop)}px`);};window.visualViewport.addEventListener('resize',adjustViewport);window.visualViewport.addEventListener('scroll',adjustViewport);}
+if(window.visualViewport){const adjustViewport=()=>{const v=window.visualViewport;const offset=Math.max(0,window.innerHeight-v.height-v.offsetTop);document.documentElement.style.setProperty('--keyboard-offset',`${offset}px`);document.documentElement.style.setProperty('--visible-height',`${v.height}px`);document.body.classList.toggle('keyboard-open',offset>100);scheduleElementCenter();};window.visualViewport.addEventListener('resize',adjustViewport);window.visualViewport.addEventListener('scroll',adjustViewport);}
+let centerFrame=null;
+function scheduleElementCenter(){
+  if(centerFrame!==null)cancelAnimationFrame(centerFrame);
+  centerFrame=requestAnimationFrame(()=>{centerFrame=null;centerSelectedElement();});
+}
+function centerSelectedElement(){
+  const panel=$('properties'),scroll=$('page-scroll');
+  document.body.classList.toggle('panel-open',!panel.hidden);
+  if(panel.hidden||editingId!==selected){scroll.style.removeProperty('--editing-space');$('page-content').style.removeProperty('--editing-side-space');return;}
+  const el=Array.from($('overlays').children).find(el=>el.dataset.id===selected);if(!el)return;
+  const viewport=window.visualViewport;
+  const area=scroll.getBoundingClientRect(),bounds=panel.getBoundingClientRect();
+  const visible={left:Math.max(area.left,viewport?.offsetLeft||0)+18,top:Math.max(area.top,viewport?.offsetTop||0)+18,right:Math.min(area.right,(viewport?.offsetLeft||0)+(viewport?.width||window.innerWidth))-18,bottom:Math.min(area.bottom,(viewport?.offsetTop||0)+(viewport?.height||window.innerHeight))-18};
+  if(window.innerWidth<=600){visible.bottom=Math.min(visible.bottom,bounds.top-18);scroll.style.setProperty('--editing-space',`${Math.max(135,area.bottom-bounds.top+area.height/2)}px`);$('page-content').style.removeProperty('--editing-side-space');}
+  else{visible.right=Math.min(visible.right,bounds.left-24);$('page-content').style.setProperty('--editing-side-space',`${bounds.width+48}px`);scroll.style.setProperty('--editing-space',`${Math.max(135,area.height/2)}px`);}
+  if(visible.bottom<=visible.top||visible.right<=visible.left)return;
+  const position=centerElementInView({scrollLeft:scroll.scrollLeft,scrollTop:scroll.scrollTop,element:el.getBoundingClientRect(),visible});
+  scroll.scrollTo({left:position.left,top:position.top,behavior:'instant'});
+}
 const clamp = (v, min, max) => Math.min(max, Math.max(min, v));
 function notify(message) { $('status').textContent = message; $('status').classList.add('visible'); clearTimeout(notify.timer); notify.timer = setTimeout(() => $('status').classList.remove('visible'), 5000); }
 async function openDocument(data, name) {
@@ -91,6 +110,7 @@ async function renderPage() {
   finally { rendering = false; if (rerender) { rerender = false; renderPage(); } }
 }
 function renderItems() {
+  scheduleElementCenter();
   $('overlays').replaceChildren();
   const width = $('page-stage').clientWidth;
   for (const item of items.filter(x => x.page === pageNumber)) {
@@ -113,7 +133,7 @@ function discardEmptyText(keepSelected = false) {
   if(!items.some(item=>item.id===selected))selected=null;
   if(items.length!==count)renderItems();
 }
-function updateProperties() { discardEmptyText(true);const item = items.find(x=>x.id===selected); editButton.hidden=!item;$('properties').hidden = !item || editingId!==selected;editButton.setAttribute('aria-expanded',String(!$('properties').hidden));if (!item) {editingId=null;return;} const isText=item.type==='text';$('property-title').textContent=isText?'Modifier le texte':'Modifier la signature';if(document.querySelector('.replace'))document.querySelector('.replace').hidden=isText;$('text-label').hidden = !isText; textOptions.hidden=!isText;$('item-size').parentElement.hidden=isText;$('text-value').value = item.text || ''; $('item-size').value = item.w*100;if(isText){$('font-value').value=item.font||'Helvetica';$('font-size').value=Math.round(item.size*geometries[item.page].width);$('line-height').value=item.lineHeight||1.2;} }
+function updateProperties() { discardEmptyText(true);const item = items.find(x=>x.id===selected); editButton.hidden=!item;$('properties').hidden = !item || editingId!==selected;editButton.setAttribute('aria-expanded',String(!$('properties').hidden));scheduleElementCenter();if (!item) {editingId=null;return;} const isText=item.type==='text';$('property-title').textContent=isText?'Modifier le texte':'Modifier la signature';if(document.querySelector('.replace'))document.querySelector('.replace').hidden=isText;$('text-label').hidden = !isText; textOptions.hidden=!isText;$('item-size').parentElement.hidden=isText;$('text-value').value = item.text || ''; $('item-size').value = item.w*100;if(isText){$('font-value').value=item.font||'Helvetica';$('font-size').value=Math.round(item.size*geometries[item.page].width);$('line-height').value=item.lineHeight||1.2;} }
 function startDrag(e,item,el,resize) {
   if (e.button !== 0 || pinch) return; e.preventDefault(); checkpoint();editingId=null;document.activeElement.blur();selected=item.id; updateSelection(); el.setPointerCapture(e.pointerId);
   const rect=$('page-stage').getBoundingClientRect(), sx=e.clientX,sy=e.clientY, initial={...item};
@@ -132,7 +152,7 @@ function removeSelected(){checkpoint();items=items.filter(x=>x.id!==selected);se
 $('open-pdf').onclick=()=>$('pdf-input').click();$('pdf-input').onchange=async(e)=>{await readFile(e.target.files[0]);e.target.value='';};
 $('new-document').onclick=()=>{if(items.length&&!window.confirm('Ouvrir un autre PDF effacera les modifications de ce document. Avez-vous téléchargé votre PDF rempli ?'))return;$('pdf-input').click();};
 $('dropzone').ondragover=(e)=>{e.preventDefault();$('dropzone').classList.add('drag-over');};$('dropzone').ondragleave=()=>$('dropzone').classList.remove('drag-over');$('dropzone').ondrop=(e)=>{e.preventDefault();$('dropzone').classList.remove('drag-over');readFile(e.dataTransfer.files[0]);};
-$('add-text').onclick=()=>{const item={type:'text',text:'',size:.022,w:.25,h:.04};addItem(item);editingId=selected;updateProperties();measureText(items.at(-1));renderItems();$('text-value').focus();};
+$('add-text').onclick=()=>{const item={type:'text',text:'',size:.022,w:.25,h:.04};addItem(item);editingId=selected;updateProperties();measureText(items.at(-1));renderItems();$('text-value').focus({preventScroll:true});};
 $('add-signature').onclick=()=>{if(signatureData){const g=geometries[pageNumber];addItem({type:'signature',data:signatureData,w:.3,h:.3*g.width/g.height/signatureRatio,size:.02});}else $('signature-input').click();};
 // Long press is unnecessary: the properties panel also lets you replace a PNG.
 const replace=document.createElement('button');replace.className='quiet replace';replace.textContent='Importer une autre signature';replace.onclick=()=>$('signature-input').click();$('delete-item').before(replace);

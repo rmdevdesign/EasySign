@@ -89,4 +89,12 @@ body.editing{overflow:hidden;background:#e6e9e2}
 @media(max-width:360px){.floating-tools .tool{padding:8px}.floating-tools #undo{padding:0 7px}.editing .icon-button{min-width:32px}.zoom-controls output{min-width:38px}}
 .floating-tools #edit-selected{padding:0 14px;min-height:48px;background:#244e40;color:white;border-radius:10px;white-space:nowrap;font-weight:600}
 #properties.floating-properties[hidden]{display:none!important;pointer-events:none}
+.editing #page-scroll{padding-bottom:var(--editing-space,135px)}
+.editing #page-content{padding-right:var(--editing-side-space,24px)}
+@media(max-width:600px){
+  .editing #page-content{padding-right:8px}
+  .keyboard-open .floating-tools{visibility:hidden;pointer-events:none}
+  .keyboard-open #properties.floating-properties{bottom:calc(12px + var(--keyboard-offset,0px));max-height:max(110px,calc(var(--visible-height,100dvh) - 250px))}
+  .keyboard-open .floating-properties #text-options,.keyboard-open .floating-properties .danger,.keyboard-open .floating-properties .replace{display:none}
+}
 @media(max-width:600px){.floating-tools{flex-wrap:wrap;justify-content:center;width:max-content}.floating-tools #edit-selected{position:absolute;bottom:calc(100% + 10px);left:50%;transform:translateX(-50%);box-shadow:0 4px 15px #243e3530;min-height:44px;padding:0 20px}.floating-tools:has(#edit-selected:not([hidden]))~.floating-properties{bottom:calc(140px + env(safe-area-inset-bottom) + var(--keyboard-offset,0px))}}
