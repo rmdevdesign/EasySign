@@ -1,18 +1,19 @@
 import './style.css';
-import * as pdfjs from 'pdfjs-dist';
-import workerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
-import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
-import { exportPdf } from './pdf.js';
+import { appShellMarkup } from './app-shell.js';
 import { zoomAroundPoint, centerElementInView } from './viewport.js';
 import { setupInlineSignatureImport, renderSignature } from './inline-signature.js';
 import { adjustCrop, cropPixels } from './crop.js';
-pdfjs.GlobalWorkerOptions.workerSrc = workerUrl;
 
-const icons = { upload:'↑', signature:'〰', text:'T', download:'↓', close:'×' };
-document.querySelector('#app').innerHTML = `
-<header><a class="brand" href="./"><span class="brand-mark">e<span>✓</span></span>easy<span class="brand-light">sign</span><span class="badge">PDF</span></a><span class="header-note"><span class="green-dot"></span> Vos documents restent sur votre appareil</span><button id="new-document" class="quiet" hidden>Nouveau PDF</button></header>
-<main><section id="welcome"><div class="eyebrow">MOINS DE PAPIER. PLUS DE SIMPLICITÉ.</div><h1>Un PDF à remplir ?<br><span>C’est déjà presque fait.</span></h1><p class="intro">Écrivez directement sur votre PDF, posez votre signature.<br>Depuis une image ou une photo, sans quitter votre appareil.</p><div class="start-layout"><div id="dropzone" class="upload-card"><div class="upload-icon">${icons.upload}</div><h2>Votre document commence ici</h2><p>Glissez votre PDF, ou choisissez un fichier.</p><button id="open-pdf" class="primary">Choisir un PDF <span>↗</span></button><small>PDF • jusqu’à 30 Mo</small></div><div class="sample-card"><span class="sample-label">ÉCRIVEZ. DÉPLACEZ. SIGNEZ.</span><div class="paper"><span class="paper-title">Le début d’un beau projet.</span><div class="paper-line"></div><div class="paper-line short"></div><div class="mock-text">Camille Martin <span>↗</span></div><div class="paper-line"></div><span class="paper-caption">Signature</span><div class="mock-sign">Camille<span class="mock-handle"></span></div></div><span class="sample-foot">Votre signature, votre texte. Directement sur le PDF.</span></div></div><button id="demo" class="demo-button">Essayez maintenant avec un PDF de démonstration <span>→</span></button><div class="benefits"><div><span>01</span><strong>Ouvrez votre PDF</strong><p>Un contrat, un formulaire, une autorisation…</p></div><div><span>02</span><strong>Écrivez et signez dessus</strong><p>Saisissez votre texte sur la page. Importez votre signature et retirez son fond clair.</p></div><div><span>03</span><strong>Ajustez. Téléchargez.</strong><p>Déplacez, agrandissez et zoomez sur le PDF. Votre document est prêt à partager.</p></div></div></section>
-<section id="editor" hidden><div class="editor-heading"><div><div class="eyebrow">VOTRE ESPACE DE SIGNATURE</div><h1 id="filename"></h1></div><button id="export" class="primary">${icons.download} Télécharger <span class="desktop-label">le PDF</span></button></div><div class="workspace"><aside><div class="panel-title">À vous de jouer</div><p class="panel-description">Ajoutez un élément, puis placez-le sur la page.</p><button id="add-text" class="tool"><span class="tool-icon">T</span><span><strong>Ajouter du texte</strong><small>Remplir les champs</small></span><span>+</span></button><button id="add-signature" class="tool"><span class="tool-icon">〰</span><span><strong>Votre signature</strong><small>Importer un PNG transparent</small></span><span>+</span></button><div id="properties" hidden><div class="divider"></div><div class="panel-title">Élément sélectionné</div><label id="text-label">Votre texte<textarea id="text-value" rows="3" placeholder="Votre texte…"></textarea></label><label>Taille <input id="item-size" type="range" min="1" max="100" value="30"></label><button id="delete-item" class="danger">Supprimer l’élément</button></div><div class="tip"><span>✧</span><p>Déplacez les éléments au doigt ou à la souris. La poignée du coin ajuste leur taille.</p></div><div id="element-count" class="element-count">Aucun élément ajouté</div></aside><div class="document-area"><div class="page-toolbar"><div><button id="prev" class="icon-button" aria-label="Page précédente">‹</button><span id="page-info">Page 1 / 1</span><button id="next" class="icon-button" aria-label="Page suivante">›</button></div><span class="fit-label">Ajusté à l’écran</span></div><div id="page-scroll"><div id="page-stage"><canvas id="pdf-canvas"></canvas><div id="overlays"></div></div></div></div></div></section></main><footer><span>Un petit geste. Un document prêt.</span><span>100 % dans votre navigateur <span class="green-dot"></span></span></footer><input id="pdf-input" type="file" accept="application/pdf,.pdf" hidden><input id="signature-input" type="file" accept="image/png,.png" hidden><div id="status" role="status" aria-live="polite"></div>`;
+// pdfjs-dist and pdf-lib are heavy (~2 MB combined); load them only once a PDF
+// is actually opened, exported or demoed, instead of on the welcome page.
+let pdfjsPromise, pdfLibPromise;
+const loadPdfjs = () => pdfjsPromise ??= import('pdfjs-dist').then(async (pdfjs) => {
+  pdfjs.GlobalWorkerOptions.workerSrc = (await import('pdfjs-dist/build/pdf.worker.min.mjs?url')).default;
+  return pdfjs;
+});
+const loadPdfLib = () => pdfLibPromise ??= import('pdf-lib');
+
+document.querySelector('#app').innerHTML = appShellMarkup();
 
 const $ = (id) => document.getElementById(id);
 const homeFeatures=document.createElement('div');homeFeatures.className='home-features';homeFeatures.innerHTML='<span>✎ Texte directement sur le PDF</span><span>〰 Signature PNG ou JPG</span><span>✧ Retrait du fond clair</span>';document.querySelector('.start-layout').before(homeFeatures);
@@ -67,13 +68,19 @@ document.querySelector('aside').remove();
 document.querySelector('.fit-label').remove();
 const firstPageButton=document.createElement('button');firstPageButton.id='first-page';firstPageButton.className='icon-button';firstPageButton.textContent='«';firstPageButton.setAttribute('aria-label','Première page');firstPageButton.title='Première page';$('prev').before(firstPageButton);
 const lastPageButton=document.createElement('button');lastPageButton.id='last-page';lastPageButton.className='icon-button';lastPageButton.textContent='»';lastPageButton.setAttribute('aria-label','Dernière page');lastPageButton.title='Dernière page';$('next').after(lastPageButton);
-function goToPage(number){if(!pdf||number===pageNumber)return;documentMenu.close();pageNumber=number;selected=null;editingId=null;updateProperties();$('page-scroll').scrollTo(0,0);renderPage();}
+function goToPage(number){if(!pdf||number===pageNumber)return;documentMenu.close();pageNumber=number;selected=null;editingId=null;updateProperties();$('page-scroll').scrollTo(0,0);renderPage();syncPageJump();}
+function syncPageJump(){const input=$('page-jump-input');if(!pdf||!input)return;input.max=pdf.numPages;if(document.activeElement!==input)input.value=pageNumber;}
 firstPageButton.onclick=()=>goToPage(1);lastPageButton.onclick=()=>goToPage(pdf.numPages);
 const zoomControls=document.createElement('div');zoomControls.className='zoom-controls';zoomControls.innerHTML='<button id="zoom-out" class="icon-button" aria-label="Réduire le zoom">−</button><output id="zoom-level" aria-live="polite">100 %</output><button id="zoom-in" class="icon-button" aria-label="Agrandir le PDF">+</button><button id="zoom-fit" class="quiet">Ajuster</button>';document.querySelector('.page-toolbar').append(zoomControls);
 const documentMenu=document.createElement('dialog');documentMenu.className='document-menu';documentMenu.id='document-menu';documentMenu.innerHTML='<div class="properties-heading"><strong>Votre document</strong><button class="quiet" id="close-document-menu">Fermer ×</button></div><div class="menu-title"></div><h2>Aller à une page</h2><div class="menu-navigation"></div><h2>Zoom du PDF</h2><div class="menu-zoom"></div><div class="menu-actions"></div>';
 document.body.append(documentMenu);
 documentMenu.querySelector('.menu-title').append($('filename'));
 const pageToolbar=document.querySelector('.page-toolbar');documentMenu.querySelector('.menu-navigation').append(pageToolbar.firstElementChild);documentMenu.querySelector('.menu-zoom').append(zoomControls);pageToolbar.remove();
+const pageJump=document.createElement('div');pageJump.className='page-jump';pageJump.innerHTML='<label for="page-jump-input">Page n°</label><input id="page-jump-input" type="number" min="1" inputmode="numeric"><button id="page-jump-go" class="quiet">Aller</button>';
+documentMenu.querySelector('.menu-navigation').append(pageJump);
+function commitPageJump(){const value=Math.round(Number($('page-jump-input').value));if(!pdf||!value||value<1||value>pdf.numPages)return syncPageJump();goToPage(value);}
+$('page-jump-go').onclick=commitPageJump;
+$('page-jump-input').onkeydown=(e)=>{if(e.key==='Enter'){e.preventDefault();commitPageJump();}};
 documentMenu.querySelector('.menu-actions').append($('new-document'));documentMenu.append(gestureHint);
 const compactBar=document.createElement('div');compactBar.className='compact-document-bar';compactBar.innerHTML='<button id="open-document-menu" class="quiet" aria-haspopup="dialog" aria-controls="document-menu">☰ Menu</button><button id="compact-page" class="quiet" aria-haspopup="dialog" aria-controls="document-menu">Page 1 ▾</button>';
 compactBar.append($('export'));$('editor').prepend(compactBar);document.querySelector('.editor-heading').remove();
@@ -131,6 +138,7 @@ function notify(message) { $('status').textContent = message; $('status').classL
 async function openDocument(data, name) {
   try {
     const original = new Uint8Array(data);
+    const [{ PDFDocument }, pdfjs] = await Promise.all([loadPdfLib(), loadPdfjs()]);
     // Validate export compatibility before opening (encrypted PDFs are unsupported).
     await PDFDocument.load(original);
     const nextPdf = await pdfjs.getDocument({ data: original.slice(), isEvalSupported: false }).promise;
@@ -138,7 +146,7 @@ async function openDocument(data, name) {
     bytes = original; pdf = nextPdf; filename = name; pageNumber = 1; items = []; selected = null; geometries = {}; history.length=0;undoButton.disabled=true;
     for (let p = 1; p <= pdf.numPages; p++) { const vp = (await pdf.getPage(p)).getViewport({scale:1}); geometries[p] = {width:vp.width,height:vp.height}; }
     $('welcome').hidden = true; $('editor').hidden = false; $('new-document').hidden = false; $('filename').textContent = name;document.body.classList.add('editing');zoom=1;updateZoomControls();$('page-scroll').scrollTo(0,0);
-    await renderPage(); updateProperties();
+    await renderPage(); updateProperties(); syncPageJump();
   } catch (err) { console.error(err); notify('Impossible d’ouvrir ce PDF. Vérifiez qu’il est valide et non protégé par un mot de passe.'); }
 }
 async function readFile(file) { if (!file) return; if (file.size > 30 * 1024 * 1024) return notify('Choisissez un PDF de moins de 30 Mo.'); await openDocument(await file.arrayBuffer(), file.name); }
@@ -231,7 +239,7 @@ document.addEventListener('pointerdown',(e)=>{
 },true);
 $('overlays').onpointerdown=(e)=>{if(e.target===$('overlays')){selected=null;updateSelection();}};
 $('prev').onclick=()=>{if(pageNumber>1)goToPage(pageNumber-1);};$('next').onclick=()=>{if(pageNumber<pdf.numPages)goToPage(pageNumber+1);};
-$('export').onclick=async()=>{const button=$('export');button.disabled=true;try{const result=await exportPdf(bytes,items,geometries);const blob=new Blob([result],{type:'application/pdf'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename.replace(/\.pdf$/i,'')+'-signe.pdf';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);notify('Votre PDF est prêt. Sur iPhone, utilisez Partager pour l’enregistrer dans Fichiers.');}catch(err){console.error(err);notify('Export impossible. Les textes doivent utiliser des caractères latins (sans emoji).');}finally{button.disabled=false;}};
-$('demo').onclick=async()=>{const doc=await PDFDocument.create();const font=await doc.embedFont(StandardFonts.Helvetica);const page=doc.addPage([595,842]);const ink=rgb(.12,.2,.18);page.drawText('AUTORISATION',{x:55,y:755,size:24,font,color:ink});page.drawText('Un exemple pour prendre la main',{x:55,y:724,size:12,font,color:ink});for(const [i,text]of ['Je soussigné(e) :','Autorise :','Fait à :                         Le :','Signature :'].entries()){const y=620-i*110;page.drawText(text,{x:55,y,size:13,font,color:ink});page.drawLine({start:{x:55,y:y-45},end:{x:540,y:y-45},thickness:.6,color:rgb(.7,.75,.72)});}await openDocument(await doc.save(),'Autorisation-demo.pdf');};
+$('export').onclick=async()=>{const button=$('export');button.disabled=true;try{const {exportPdf}=await import('./pdf.js');const result=await exportPdf(bytes,items,geometries);const blob=new Blob([result],{type:'application/pdf'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=filename.replace(/\.pdf$/i,'')+'-signe.pdf';document.body.append(a);a.click();a.remove();setTimeout(()=>URL.revokeObjectURL(url),60000);notify('Votre PDF est prêt. Sur iPhone, utilisez Partager pour l’enregistrer dans Fichiers.');}catch(err){console.error(err);notify('Export impossible. Les textes doivent utiliser des caractères latins (sans emoji).');}finally{button.disabled=false;}};
+$('demo').onclick=async()=>{const {PDFDocument,StandardFonts,rgb}=await loadPdfLib();const doc=await PDFDocument.create();const font=await doc.embedFont(StandardFonts.Helvetica);const page=doc.addPage([595,842]);const ink=rgb(.12,.2,.18);page.drawText('AUTORISATION',{x:55,y:755,size:24,font,color:ink});page.drawText('Un exemple pour prendre la main',{x:55,y:724,size:12,font,color:ink});for(const [i,text]of ['Je soussigné(e) :','Autorise :','Fait à :                         Le :','Signature :'].entries()){const y=620-i*110;page.drawText(text,{x:55,y,size:13,font,color:ink});page.drawLine({start:{x:55,y:y-45},end:{x:540,y:y-45},thickness:.6,color:rgb(.7,.75,.72)});}await openDocument(await doc.save(),'Autorisation-demo.pdf');};
 let resizeTimer;window.addEventListener('resize',()=>{clearTimeout(resizeTimer);resizeTimer=setTimeout(renderPage,150);});
 window.addEventListener('beforeunload',(e)=>{if(items.length){e.preventDefault();e.returnValue='';}});
